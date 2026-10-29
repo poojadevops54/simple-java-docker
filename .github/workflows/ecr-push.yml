@@ -1,4 +1,3 @@
-
 name: Build and Push Java Docker Image to ECR
 
 on:
@@ -18,6 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug OIDC subject
+        run: |
+          TOKEN_JSON=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          ID_TOKEN=$(echo "$TOKEN_JSON" | jq -r '.value')
+          if [ -z "$ID_TOKEN" ] || [ "$ID_TOKEN" = "null" ]; then
+            echo "Failed to obtain OIDC token"
+            exit 1
+          fi
+          PAYLOAD=$(echo "$ID_TOKEN" | cut -d '.' -f2 | tr '_-' '/+' | base64 -d 2>/dev/null)
+          echo "$PAYLOAD" | jq '{sub, aud, repository, repository_id, repository_owner, repository_owner_id, ref}'
+
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
@@ -34,5 +46,5 @@ jobs:
           REPOSITORY: simple-java-docker
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
-          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
